@@ -134,7 +134,7 @@ run_setup() {
     fi
 
     # Upgrade pip
-    pip install --upgrade pip setuptools wheel -q
+    pip install --upgrade pip "setuptools<82" wheel -q
 
     header "Installing PyTorch"
     # Check if torch is already installed with CUDA
@@ -185,6 +185,7 @@ run_setup() {
         huggingface_hub \
         transformers \
         accelerate \
+        pycocotools \
         -q
     log "Server dependencies installed ✓"
 
