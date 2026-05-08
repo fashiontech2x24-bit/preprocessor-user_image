@@ -33,6 +33,7 @@ header(){ echo -e "\n${CYAN}${BOLD}═══ $* ═══${NC}\n"; }
 # ── Config ────────────────────────────────────────────────────────
 PORT="${PORT:-8000}"
 HF_TOKEN="${HF_TOKEN:-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}"
+export HF_HOME="${HF_HOME:-/workspace/.cache/huggingface}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_DIR="${SCRIPT_DIR}/server"
 SAM3_DIR="${SCRIPT_DIR}/sam3_repo"
@@ -191,27 +192,15 @@ run_setup() {
     setup_hf_auth
 
     header "Pre-downloading SAM 3 Model Weights"
+    log "HF_HOME=${HF_HOME}"
+    mkdir -p "$HF_HOME"
     log "Triggering model download (this may take a few minutes)..."
     python3 -c "
-import sys
-try:
-    from sam3.model_builder import build_sam3_image_model
-    print('[SAM3] Downloading via official sam3 package...')
-    model = build_sam3_image_model()
-    print('[SAM3] Model downloaded successfully ✓')
-except Exception as e:
-    print(f'[SAM3] Official package download failed: {e}')
-    print('[SAM3] Trying transformers fallback...')
-    try:
-        from transformers import Sam3Model, Sam3Processor
-        model = Sam3Model.from_pretrained('facebook/sam3')
-        processor = Sam3Processor.from_pretrained('facebook/sam3')
-        print('[SAM3] Model downloaded via transformers ✓')
-    except Exception as e2:
-        print(f'[WARN] Model pre-download failed: {e2}')
-        print('[WARN] Model will be downloaded on first server start')
-        sys.exit(0)
-" || warn "Pre-download had issues — model will download on first request"
+from sam3.model_builder import build_sam3_image_model
+print('[SAM3] Downloading model weights...')
+model = build_sam3_image_model()
+print('[SAM3] Model downloaded successfully ✓')
+" || warn "Pre-download had issues — model will download on first server start"
 
     log ""
     log "════════════════════════════════════════════════"
