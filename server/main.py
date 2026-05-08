@@ -95,12 +95,9 @@ def load_model():
     from sam3.model_builder import build_sam3_image_model
     from sam3.model.sam3_image_processor import Sam3Processor as Sam3Proc
 
-    _model = build_sam3_image_model()
-    # SAM3 defaults to bfloat16 — cast to float32 to match processor output
-    _model = _model.float()
-    model = _model
+    model = build_sam3_image_model()
     processor = Sam3Proc(model)
-    logger.info(f"SAM 3 loaded (float32) in {time.time() - start:.1f}s")
+    logger.info(f"SAM 3 loaded in {time.time() - start:.1f}s")
 
 
 # ──────────────────────────── Preprocessing ──────────────────────
@@ -214,11 +211,12 @@ def _tile_reflect(strip: np.ndarray, target_size: int, axis: int) -> np.ndarray:
 
 def segment_image(image: Image.Image, text_prompt: str) -> np.ndarray:
     """Segment using the official sam3 package API."""
-    inference_state = processor.set_image(image)
-    output = processor.set_text_prompt(
-        state=inference_state,
-        prompt=text_prompt,
-    )
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        inference_state = processor.set_image(image)
+        output = processor.set_text_prompt(
+            state=inference_state,
+            prompt=text_prompt,
+        )
     masks = output["masks"]       # list of binary masks
     scores = output["scores"]     # confidence scores
 
