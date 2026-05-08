@@ -34,10 +34,10 @@ logger = logging.getLogger("sam3-vton")
 
 # Default text prompts per garment type – editable at runtime via /config
 DEFAULT_PROMPTS = {
-    "full":    "clothing on the person",
-    "upper":   "upper body garment shirt top blouse",
-    "lower":   "lower body garment pants trousers skirt",
-    "layered": "outer wear jacket coat hoodie blazer",
+    "full":    "clothes",
+    "upper":   "shirt",
+    "lower":   "pants",
+    "layered": "jacket",
 }
 
 # Mask overlay config – tunable via /config
