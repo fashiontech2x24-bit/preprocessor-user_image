@@ -42,9 +42,9 @@ DEFAULT_PROMPTS = {
 
 # Mask overlay config – tunable via /config
 MASK_CONFIG = {
-    "green_color": (0, 255, 0),       # RGB green overlay
-    "green_alpha": 0.45,              # opacity of green tint (0-1)
-    "blur_radius": 100,               # max gaussian blur radius
+    "green_color": (0, 255, 0),       # RGB overlay color (unused when alpha=0)
+    "green_alpha": 0.0,               # 0 = plain blur, no color tint
+    "blur_radius": 50,                # gaussian blur radius
     "border_width": 3,                # clear border width in pixels (thin)
     "threshold": 0.5,                 # SAM3 detection threshold
     "mask_threshold": 0.5,            # SAM3 mask binarization threshold
@@ -243,7 +243,7 @@ def segment_image(image: Image.Image, text_prompt: str) -> np.ndarray:
     return combined
 
 
-def apply_green_blur_mask(
+def apply_blur_mask(
     image: Image.Image,
     mask: np.ndarray,
 ) -> Image.Image:
@@ -252,32 +252,39 @@ def apply_green_blur_mask(
     with a thin clear border around the mask edge.
 
     Flow:
-    1. Heavy gaussian blur on full image
-    2. Erode the mask slightly to create a clear border
-    3. Composite: original outside mask, blur inside eroded mask,
-       clear original border between the two
+    1. Gaussian blur on full image
+    2. Optionally tint the blurred region (if green_alpha > 0)
+    3. Erode the mask slightly to create a clear border
+    4. Composite: original outside mask, blur inside eroded mask
     """
     cfg = mask_config
     blur_radius = cfg["blur_radius"]
     border_width = cfg["border_width"]
+    green_alpha = cfg["green_alpha"]
 
     img_array = np.array(image).copy()
 
-    # 1. Create heavily blurred version
+    # 1. Create blurred version
     blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
     blurred_array = np.array(blurred)
 
-    # 2. Erode mask to create inner region (border = mask - eroded_mask)
+    # 2. Optionally apply color tint
+    if green_alpha > 0:
+        green_color = cfg["green_color"]
+        green_overlay = np.full_like(img_array, green_color, dtype=np.uint8)
+        blurred_array = (
+            blurred_array.astype(np.float32) * (1 - green_alpha)
+            + green_overlay.astype(np.float32) * green_alpha
+        ).astype(np.uint8)
+
+    # 3. Erode mask to create inner region (border = mask - eroded_mask)
     from scipy.ndimage import binary_erosion
     if border_width > 0:
         eroded_mask = binary_erosion(mask, iterations=border_width)
     else:
         eroded_mask = mask.copy()
 
-    # 3. Composite
-    # - Outside mask: original image
-    # - Border region (mask but not eroded): original (clear border)
-    # - Inside eroded mask: blurred
+    # 4. Composite: original outside, blurred inside eroded mask
     result = img_array.copy()
     result[eroded_mask] = blurred_array[eroded_mask]
 
@@ -350,7 +357,7 @@ async def segment(
 
     # Apply green blur mask
     try:
-        result = apply_green_blur_mask(image, mask)
+        result = apply_blur_mask(image, mask)
     except Exception as e:
         logger.error(f"Mask application failed: {e}")
         raise HTTPException(status_code=500, detail=f"Mask application failed: {e}")
