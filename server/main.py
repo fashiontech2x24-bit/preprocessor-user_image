@@ -95,9 +95,12 @@ def load_model():
     from sam3.model_builder import build_sam3_image_model
     from sam3.model.sam3_image_processor import Sam3Processor as Sam3Proc
 
-    model = build_sam3_image_model()
+    _model = build_sam3_image_model()
+    # SAM3 defaults to bfloat16 — cast to float32 to match processor output
+    _model = _model.float()
+    model = _model
     processor = Sam3Proc(model)
-    logger.info(f"SAM 3 loaded in {time.time() - start:.1f}s")
+    logger.info(f"SAM 3 loaded (float32) in {time.time() - start:.1f}s")
 
 
 # ──────────────────────────── Preprocessing ──────────────────────
