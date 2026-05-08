@@ -248,49 +248,38 @@ def apply_green_blur_mask(
     mask: np.ndarray,
 ) -> Image.Image:
     """
-    Apply green-tinted gaussian blur on the segmented area
+    Apply gaussian blur on the segmented area
     with a thin clear border around the mask edge.
 
     Flow:
     1. Heavy gaussian blur on full image
-    2. Green tint the blurred region
-    3. Erode the mask slightly to create a clear border
-    4. Composite: original outside mask, green-blur inside eroded mask,
+    2. Erode the mask slightly to create a clear border
+    3. Composite: original outside mask, blur inside eroded mask,
        clear original border between the two
     """
     cfg = mask_config
-    green_color = cfg["green_color"]
-    green_alpha = cfg["green_alpha"]
     blur_radius = cfg["blur_radius"]
     border_width = cfg["border_width"]
 
     img_array = np.array(image).copy()
-    h, w = img_array.shape[:2]
 
     # 1. Create heavily blurred version
     blurred = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
     blurred_array = np.array(blurred)
 
-    # 2. Apply green tint to blurred region
-    green_overlay = np.full_like(img_array, green_color, dtype=np.uint8)
-    green_blurred = (
-        blurred_array.astype(np.float32) * (1 - green_alpha)
-        + green_overlay.astype(np.float32) * green_alpha
-    ).astype(np.uint8)
-
-    # 3. Erode mask to create inner region (border = mask - eroded_mask)
+    # 2. Erode mask to create inner region (border = mask - eroded_mask)
     from scipy.ndimage import binary_erosion
     if border_width > 0:
         eroded_mask = binary_erosion(mask, iterations=border_width)
     else:
         eroded_mask = mask.copy()
 
-    # 4. Composite
+    # 3. Composite
     # - Outside mask: original image
     # - Border region (mask but not eroded): original (clear border)
-    # - Inside eroded mask: green-blurred
+    # - Inside eroded mask: blurred
     result = img_array.copy()
-    result[eroded_mask] = green_blurred[eroded_mask]
+    result[eroded_mask] = blurred_array[eroded_mask]
 
     return Image.fromarray(result)
 
