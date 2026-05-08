@@ -44,8 +44,8 @@ DEFAULT_PROMPTS = {
 MASK_CONFIG = {
     "green_color": (0, 255, 0),       # RGB overlay color (unused when alpha=0)
     "green_alpha": 0.0,               # 0 = plain blur, no color tint
-    "blur_radius": 50,                # gaussian blur radius
-    "border_width": 3,                # clear border width in pixels (thin)
+    "blur_radius": 12,                # gaussian blur radius
+    "border_width": 0,                # no border
     "threshold": 0.5,                 # SAM3 detection threshold
     "mask_threshold": 0.5,            # SAM3 mask binarization threshold
 }
