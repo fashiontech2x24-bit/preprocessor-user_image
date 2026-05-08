@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAM3 Garment Segmentation — VTON Test Console</title>
+    <meta name="description" content="Test console for SAM3-powered garment segmentation API for virtual try-on preprocessing">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- ─── Header ─── -->
+        <header class="header" id="header">
+            <div class="header__brand">
+                <div class="header__icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1>SAM3 Segmenter</h1>
+                    <p class="header__sub">VTON Preprocessing Console</p>
+                </div>
+            </div>
+            <div class="header__status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </header>
+
+        <!-- ─── Main Layout ─── -->
+        <main class="main">
+            <!-- Left Panel: Controls -->
+            <aside class="panel panel--controls" id="controlsPanel">
+                <section class="card" id="connectionCard">
+                    <h2 class="card__title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__icon">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                        Connection
+                    </h2>
+                    <div class="field">
+                        <label for="serverUrl">Server URL</label>
+                        <input type="text" id="serverUrl" placeholder="http://ip:port" value="http://localhost:8000">
+                    </div>
+                    <button class="btn btn--primary" id="connectBtn" onclick="checkHealth()">
+                        <span>Connect</span>
+                    </button>
+                </section>
+
+                <section class="card" id="segmentCard">
+                    <h2 class="card__title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__icon">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M9 3v18"/>
+                            <path d="M3 9h18"/>
+                        </svg>
+                        Segmentation
+                    </h2>
+                    <div class="field">
+                        <label for="imageInput">User Image</label>
+                        <div class="upload-area" id="uploadArea">
+                            <input type="file" id="imageInput" accept="image/*" hidden>
+                            <div class="upload-area__content" id="uploadContent">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="upload-icon">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <span>Drop image or click</span>
+                            </div>
+                            <img id="imagePreview" class="upload-area__preview" style="display:none">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="typeSelect">Garment Type</label>
+                        <select id="typeSelect">
+                            <option value="full">Full — All Clothes</option>
+                            <option value="upper" selected>Upper — Top Garments</option>
+                            <option value="lower">Lower — Bottom Garments</option>
+                            <option value="layered">Layered — Outer Wear</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="promptOverride">Prompt Override <span class="label-hint">(leave empty for default)</span></label>
+                        <input type="text" id="promptOverride" placeholder="e.g. red jacket on the person">
+                    </div>
+                    <div class="field field--check">
+                        <input type="checkbox" id="showRawMask">
+                        <label for="showRawMask">Also show raw mask</label>
+                    </div>
+                    <button class="btn btn--accent" id="segmentBtn" onclick="runSegmentation()" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn__icon">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        <span>Run Segmentation</span>
+                    </button>
+                </section>
+
+                <section class="card card--collapsible" id="promptsCard">
+                    <h2 class="card__title card__title--toggle" onclick="toggleCard('promptsCard')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__icon">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                        Edit Prompts
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__chevron">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </h2>
+                    <div class="card__body">
+                        <div class="field">
+                            <label for="promptFull">full</label>
+                            <input type="text" id="promptFull" class="mono">
+                        </div>
+                        <div class="field">
+                            <label for="promptUpper">upper</label>
+                            <input type="text" id="promptUpper" class="mono">
+                        </div>
+                        <div class="field">
+                            <label for="promptLower">lower</label>
+                            <input type="text" id="promptLower" class="mono">
+                        </div>
+                        <div class="field">
+                            <label for="promptLayered">layered</label>
+                            <input type="text" id="promptLayered" class="mono">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn--sm" onclick="savePrompts()">Save Prompts</button>
+                            <button class="btn btn--sm btn--ghost" onclick="resetConfig()">Reset All</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card card--collapsible" id="maskCard">
+                    <h2 class="card__title card__title--toggle" onclick="toggleCard('maskCard')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__icon">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        Mask Settings
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__chevron">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </h2>
+                    <div class="card__body">
+                        <div class="field">
+                            <label for="greenColor">Green Color (R,G,B)</label>
+                            <input type="text" id="greenColor" value="0,255,0" class="mono">
+                        </div>
+                        <div class="field">
+                            <label for="greenAlpha">Green Alpha</label>
+                            <input type="range" id="greenAlpha" min="0" max="1" step="0.05" value="0.45">
+                            <span class="range-val" id="greenAlphaVal">0.45</span>
+                        </div>
+                        <div class="field">
+                            <label for="blurRadius">Blur Radius</label>
+                            <input type="range" id="blurRadius" min="1" max="200" value="100">
+                            <span class="range-val" id="blurRadiusVal">100</span>
+                        </div>
+                        <div class="field">
+                            <label for="borderWidth">Border Width (px)</label>
+                            <input type="range" id="borderWidth" min="0" max="20" value="3">
+                            <span class="range-val" id="borderWidthVal">3</span>
+                        </div>
+                        <div class="field">
+                            <label for="threshold">Detection Threshold</label>
+                            <input type="range" id="threshold" min="0.1" max="0.9" step="0.05" value="0.5">
+                            <span class="range-val" id="thresholdVal">0.5</span>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn--sm" onclick="saveMaskConfig()">Save Settings</button>
+                        </div>
+                    </div>
+                </section>
+            </aside>
+
+            <!-- Right Panel: Results -->
+            <div class="panel panel--results">
+                <section class="card card--results" id="resultsCard">
+                    <h2 class="card__title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__icon">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                        Results
+                    </h2>
+                    <div class="results-grid" id="resultsGrid">
+                        <div class="result-placeholder" id="resultPlaceholder">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" class="placeholder-icon">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                            </svg>
+                            <p>Upload an image and run segmentation</p>
+                            <p class="placeholder-sub">Results will appear here</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Log Panel -->
+                <section class="card card--log" id="logCard">
+                    <h2 class="card__title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="card__icon">
+                            <polyline points="4 17 10 11 4 5"/>
+                            <line x1="12" y1="19" x2="20" y2="19"/>
+                        </svg>
+                        Log
+                        <button class="btn btn--xs btn--ghost" onclick="clearLog()" style="margin-left:auto">Clear</button>
+                    </h2>
+                    <div class="log-output" id="logOutput">
+                        <div class="log-entry log-entry--info">Ready. Connect to server to begin.</div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display:none">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p id="loadingText">Processing...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
