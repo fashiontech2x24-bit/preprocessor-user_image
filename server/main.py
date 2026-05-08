@@ -100,7 +100,114 @@ def load_model():
     logger.info(f"SAM 3 loaded in {time.time() - start:.1f}s")
 
 
-# ──────────────────────────── Core Logic ─────────────────────────
+# ──────────────────────────── Preprocessing ──────────────────────
+
+CANVAS_W, CANVAS_H = 768, 1024
+
+
+def preprocess_to_canvas(image: Image.Image) -> Image.Image:
+    """
+    Fit image into a 768×1024 canvas with reflect-fill padding.
+
+    Steps:
+        1. Compute scale factor to fit within canvas (preserve aspect ratio)
+        2. Resize with LANCZOS (best quality for downscale)
+        3. Paste centered onto canvas
+        4. Fill empty bands with reflected/mirrored strips from image edges
+    """
+    orig_w, orig_h = image.size
+
+    # Already exact size — skip
+    if orig_w == CANVAS_W and orig_h == CANVAS_H:
+        return image.copy()
+
+    # 1. Scale to fit within canvas
+    scale = min(CANVAS_W / orig_w, CANVAS_H / orig_h)
+    new_w = round(orig_w * scale)
+    new_h = round(orig_h * scale)
+    resized = image.resize((new_w, new_h), Image.LANCZOS)
+
+    logger.info(
+        f"Preprocess: {orig_w}×{orig_h} → scale {scale:.3f} → "
+        f"{new_w}×{new_h} → canvas {CANVAS_W}×{CANVAS_H}"
+    )
+
+    # 2. Paste centered
+    canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), (0, 0, 0))
+    offset_x = (CANVAS_W - new_w) // 2
+    offset_y = (CANVAS_H - new_h) // 2
+    canvas.paste(resized, (offset_x, offset_y))
+
+    # 3. Reflect-fill empty bands
+    canvas_arr = np.array(canvas)
+    resized_arr = np.array(resized)
+
+    # ── Top band ──
+    if offset_y > 0:
+        # Mirror the top rows of the resized image
+        strip_h = min(offset_y, new_h)
+        strip = resized_arr[:strip_h, :, :]
+        reflected = strip[::-1, :, :]  # vertical flip
+        # Tile if strip is smaller than gap
+        fill = _tile_reflect(reflected, offset_y, axis=0)
+        canvas_arr[:offset_y, offset_x:offset_x + new_w, :] = fill[:, :new_w, :]
+
+    # ── Bottom band ──
+    bottom_start = offset_y + new_h
+    bottom_gap = CANVAS_H - bottom_start
+    if bottom_gap > 0:
+        strip_h = min(bottom_gap, new_h)
+        strip = resized_arr[-strip_h:, :, :]
+        reflected = strip[::-1, :, :]
+        fill = _tile_reflect(reflected, bottom_gap, axis=0)
+        canvas_arr[bottom_start:, offset_x:offset_x + new_w, :] = fill[:, :new_w, :]
+
+    # ── Left band (full height now) ──
+    if offset_x > 0:
+        strip_w = min(offset_x, new_w)
+        strip = canvas_arr[:, offset_x:offset_x + strip_w, :]
+        reflected = strip[:, ::-1, :]
+        fill = _tile_reflect(reflected, offset_x, axis=1)
+        canvas_arr[:, :offset_x, :] = fill
+
+    # ── Right band (full height now) ──
+    right_start = offset_x + new_w
+    right_gap = CANVAS_W - right_start
+    if right_gap > 0:
+        strip_w = min(right_gap, new_w)
+        strip = canvas_arr[:, right_start - strip_w:right_start, :]
+        reflected = strip[:, ::-1, :]
+        fill = _tile_reflect(reflected, right_gap, axis=1)
+        canvas_arr[:, right_start:, :] = fill
+
+    return Image.fromarray(canvas_arr)
+
+
+def _tile_reflect(strip: np.ndarray, target_size: int, axis: int) -> np.ndarray:
+    """Tile a reflected strip to fill target_size along the given axis."""
+    current = strip.shape[axis]
+    if current >= target_size:
+        slices = [slice(None)] * strip.ndim
+        slices[axis] = slice(0, target_size)
+        return strip[tuple(slices)]
+
+    # Need to repeat — alternate reflect direction
+    pieces = [strip]
+    filled = current
+    flip = True
+    while filled < target_size:
+        piece = np.flip(pieces[-1], axis=axis) if flip else pieces[-1].copy()
+        pieces.append(piece)
+        filled += piece.shape[axis]
+        flip = not flip
+
+    joined = np.concatenate(pieces, axis=axis)
+    slices = [slice(None)] * joined.ndim
+    slices[axis] = slice(0, target_size)
+    return joined[tuple(slices)]
+
+
+# ──────────────────────────── Segmentation ───────────────────────
 
 def segment_image(image: Image.Image, text_prompt: str) -> np.ndarray:
     """Segment using the official sam3 package API."""
@@ -231,6 +338,9 @@ async def segment(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
 
+    # Preprocess: fit to 768×1024 canvas with reflect padding
+    image = preprocess_to_canvas(image)
+
     # Determine prompt
     text_prompt = prompt_override if prompt_override else prompts[type.value]
     logger.info(f"Segmenting type='{type.value}' with prompt='{text_prompt}' | image={image.size}")
@@ -292,6 +402,9 @@ async def segment_raw_mask(
         image = Image.open(io.BytesIO(contents)).convert("RGB")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
+
+    # Preprocess: fit to 768×1024 canvas with reflect padding
+    image = preprocess_to_canvas(image)
 
     text_prompt = prompt_override if prompt_override else prompts[type.value]
 
